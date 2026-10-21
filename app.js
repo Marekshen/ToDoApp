@@ -1,3 +1,5 @@
+const APP_VERSION = '1.4（2026-10-21）';
+
 const CATEGORIES = [
   { id: 'sport', name: '運動', bg: '#4f8fe0', fg: '#ffffff', thumb: 'rgba(255,255,255,.22)' },
   { id: 'life', name: '生活', bg: '#ffffff', fg: '#1f2328', thumb: 'rgba(0,0,0,.06)' },
@@ -466,6 +468,7 @@ function renderMenu() {
           <button type="button" id="m-import">${UI.upload}<span>從備份還原</span></button>
         </div>
         <input type="file" id="import-file" accept=".json,application/json" hidden>
+        <div class="version">版本 ${APP_VERSION}</div>
       </div>
     </section>`;
   const $ = id => document.getElementById(id);

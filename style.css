@@ -242,27 +242,54 @@ input:focus, textarea:focus { border-color: var(--accent); }
 .toast[hidden], .lightbox[hidden], [hidden] { display: none !important; }
 .toast button { color: #7fb2ff; font-weight: 600; }
 
-.sheet-wrap {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,.35);
-  display: flex; align-items: flex-end; justify-content: center;
-  z-index: 15;
-}
-.sheet {
-  width: 100%; max-width: 560px;
-  padding: 8px 12px calc(env(safe-area-inset-bottom) + 12px);
-  display: flex; flex-direction: column; gap: 8px;
-}
-.sheet button {
+.icon-spacer { width: 42px; flex: none; }
+
+.menu {
   background: var(--surface);
-  border-radius: 14px;
-  height: 56px;
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  font-size: 17px;
-  color: var(--accent);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 20px;
 }
-.sheet button svg { width: 22px; height: 22px; }
-.sheet .cancel { font-weight: 600; color: var(--text); margin-top: 4px; }
+.menu button {
+  width: 100%;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 16px;
+  height: 54px;
+  font-size: 17px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.menu button:last-child { border-bottom: 0; }
+.menu button:active { background: #f3f4f6; }
+.menu button svg { width: 22px; height: 22px; flex: none; color: var(--accent); }
+.menu button span { flex: 1; }
+.menu button svg:last-child:not(:first-child) { width: 16px; height: 16px; color: #b0b7c1; }
+.menu-title { font-size: 13px; color: var(--muted); margin: 0 4px 8px; }
+
+.week-card {
+  background: var(--surface);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.week { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+.week col.day { width: 34px; }
+.week th, .week td { height: 44px; text-align: center; border-bottom: 1px solid var(--line); padding: 0; }
+.week thead th { height: 38px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.week th.name { text-align: left; padding: 0 6px 0 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.week thead th.name, .week tfoot th.name { color: var(--muted); font-weight: 600; font-size: 13px; }
+.week .nm { overflow: hidden; text-overflow: ellipsis; }
+.week th.name em { font-style: normal; font-size: 12px; color: var(--accent); margin-left: 4px; font-weight: 600; }
+.week .today { background: #eaf2fd; }
+.week thead .today { color: var(--accent); }
+.week td i { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,.18); vertical-align: middle; }
+.week td.weekly { font-size: 12px; color: var(--muted); text-align: left; padding-left: 10px; background: repeating-linear-gradient(-45deg, transparent 0 6px, rgba(0,0,0,.025) 6px 12px); }
+.week tbody tr { cursor: pointer; }
+.week tbody tr:active { background: #f3f4f6; }
+.week tfoot th, .week tfoot td { border-bottom: 0; font-weight: 600; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 4px 0; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,.18); }
 
 .lightbox {
   position: fixed; inset: 0;

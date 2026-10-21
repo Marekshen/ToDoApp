@@ -41,6 +41,8 @@ const UI = {
   more: svg('<circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/>'),
   download: svg('<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/>'),
   upload: svg('<path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4.5 19.5h15"/>'),
+  calendar: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/>'),
+  chevron: svg('<path d="M9 5l7 7-7 7"/>'),
   bell: svg('<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/>'),
 };
 
@@ -111,6 +113,8 @@ function route() {
   closeOpenCard = null;
   const h = location.hash.slice(1);
   if (h === '/new') renderNew();
+  else if (h === '/menu') renderMenu();
+  else if (h === '/week') renderWeek();
   else if (h.startsWith('/task/')) renderDetail(decodeURIComponent(h.slice(6)));
   else renderList();
   updateBadge();
@@ -155,7 +159,7 @@ function renderList() {
         </div>
         <div class="bar-actions">
           ${canAskBadge() ? `<button class="icon-btn" id="badge" aria-label="開啟圖示數字">${UI.bell}</button>` : ''}
-          <button class="icon-btn" id="menu" aria-label="備份與還原">${UI.more}</button>
+          <button class="icon-btn" id="menu" aria-label="更多功能">${UI.more}</button>
           <button class="icon-btn primary" id="add" aria-label="新增">${UI.plus}</button>
         </div>
       </header>
@@ -164,7 +168,7 @@ function renderList() {
       </div>
     </section>`;
   document.getElementById('add').onclick = () => go('/new');
-  document.getElementById('menu').onclick = openSheet;
+  document.getElementById('menu').onclick = () => go('/menu');
   const badgeBtn = document.getElementById('badge');
   if (badgeBtn) badgeBtn.onclick = async () => {
     await Notification.requestPermission();
@@ -443,27 +447,83 @@ function renderDetail(id) {
   });
 }
 
-function openSheet() {
-  const el = document.createElement('div');
-  el.className = 'sheet-wrap';
-  el.innerHTML = `
-    <div class="sheet">
-      <button type="button" id="export">${UI.download}<span>匯出備份</span></button>
-      <button type="button" id="import">${UI.upload}<span>從備份還原</span></button>
-      <button type="button" class="cancel" id="sheet-cancel">取消</button>
-      <input type="file" id="import-file" accept=".json,application/json" hidden>
-    </div>`;
-  document.body.appendChild(el);
-  const close = () => el.remove();
-  el.onclick = e => { if (e.target === el) close(); };
-  el.querySelector('#sheet-cancel').onclick = close;
-  el.querySelector('#export').onclick = async () => { close(); await exportBackup(); };
-  el.querySelector('#import').onclick = () => el.querySelector('#import-file').click();
-  el.querySelector('#import-file').onchange = async e => {
+function renderMenu() {
+  app.innerHTML = `
+    <section class="view">
+      <header class="bar sub">
+        <button class="icon-btn" id="back" aria-label="返回">${UI.back}</button>
+        <h2>更多功能</h2>
+        <span class="icon-spacer"></span>
+      </header>
+      <div class="scroll">
+        <div class="menu">
+          <button type="button" id="m-week">${UI.calendar}<span>一週總覽</span>${UI.chevron}</button>
+        </div>
+        <div class="menu-title">資料</div>
+        <div class="menu">
+          <button type="button" id="m-export">${UI.download}<span>匯出備份</span></button>
+          <button type="button" id="m-import">${UI.upload}<span>從備份還原</span></button>
+        </div>
+        <input type="file" id="import-file" accept=".json,application/json" hidden>
+      </div>
+    </section>`;
+  const $ = id => document.getElementById(id);
+  $('back').onclick = back;
+  $('m-week').onclick = () => go('/week');
+  $('m-export').onclick = exportBackup;
+  $('m-import').onclick = () => $('import-file').click();
+  $('import-file').onchange = async e => {
     const f = e.target.files[0];
-    close();
+    e.target.value = '';
     if (f) await importBackup(f);
   };
+}
+
+function renderWeek() {
+  const days = ['一', '二', '三', '四', '五', '六', '日'];
+  const today = isoDow(new Date());
+  const groups = [];
+  const seen = new Map();
+  for (const t of [...tasks].sort(byOrder)) {
+    const k = [t.title, t.category, t.freq, t.thumb].join('|');
+    if (seen.has(k)) seen.get(k).n++;
+    else { const g = { t, n: 1 }; seen.set(k, g); groups.push(g); }
+  }
+  const daily = groups.filter(g => g.t.freq !== 'weekly');
+  const weekly = groups.filter(g => g.t.freq === 'weekly');
+  const totals = days.map((_, i) => daily.reduce((s, g) => s + (freqOf(g.t).days.includes(i + 1) ? g.n : 0), 0));
+  const tdCls = i => (i + 1 === today ? ' class="today"' : '');
+  const nameCell = g => `<th class="name"><span class="nm">${esc(g.t.title)}</span>${g.n > 1 ? `<em>×${g.n}</em>` : ''}</th>`;
+  const row = g => {
+    const c = catOf(g.t);
+    const cells = g.t.freq === 'weekly'
+      ? '<td colspan="7" class="weekly">本週任一天完成一次</td>'
+      : days.map((_, i) => `<td${tdCls(i)}>${freqOf(g.t).days.includes(i + 1) ? `<i style="background:${c.bg}"></i>` : ''}</td>`).join('');
+    return `<tr data-id="${esc(g.t.id)}">${nameCell(g)}${cells}</tr>`;
+  };
+  app.innerHTML = `
+    <section class="view">
+      <header class="bar sub">
+        <button class="icon-btn" id="back" aria-label="返回">${UI.back}</button>
+        <h2>一週總覽</h2>
+        <span class="icon-spacer"></span>
+      </header>
+      <div class="scroll">
+        ${groups.length ? `
+        <div class="week-card">
+          <table class="week">
+            <colgroup><col><col span="7" class="day"></colgroup>
+            <thead><tr><th class="name">事項</th>${days.map((d, i) => `<th${tdCls(i)}>${d}</th>`).join('')}</tr></thead>
+            <tbody>${daily.map(row).join('')}${weekly.map(row).join('')}</tbody>
+            <tfoot><tr><th class="name">合計</th>${totals.map((n, i) => `<td${tdCls(i)}>${n}</td>`).join('')}</tr></tfoot>
+          </table>
+        </div>
+        <div class="legend">${CATEGORIES.map(c => `<span><i style="background:${c.bg}"></i>${c.name}</span>`).join('')}</div>
+        ` : '<div class="empty">還沒有任何待辦事項</div>'}
+      </div>
+    </section>`;
+  document.getElementById('back').onclick = back;
+  app.querySelectorAll('tbody tr').forEach(tr => tr.onclick = () => go('/task/' + encodeURIComponent(tr.dataset.id)));
 }
 
 const blobToDataUrl = b => new Promise((res, rej) => {

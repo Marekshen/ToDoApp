@@ -294,8 +294,40 @@ input:focus, textarea:focus { border-color: var(--accent); }
 
 .lightbox {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,.9);
-  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.92);
   z-index: 20;
 }
-.lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.lb-track {
+  position: absolute; inset: 0;
+  display: flex;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.lb-track::-webkit-scrollbar { display: none; }
+.lb-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  display: flex; align-items: center; justify-content: center;
+}
+.lb-slide img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.lb-count {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 20px);
+  color: #fff; font-size: 14px;
+  background: rgba(255,255,255,.15);
+  padding: 4px 12px; border-radius: 12px;
+  pointer-events: none;
+}
+.lb-count:empty { display: none; }
+.lb-close {
+  position: absolute; right: 14px;
+  top: calc(env(safe-area-inset-top) + 14px);
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  padding: 10px;
+}

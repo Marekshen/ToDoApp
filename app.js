@@ -1,4 +1,4 @@
-const APP_VERSION = '1.5（2026-10-21）';
+const APP_VERSION = '1.6（2026-10-21）';
 const MAX_IMAGES = 9;
 
 const CATEGORIES = [
@@ -113,6 +113,7 @@ function back() {
 
 function route() {
   if (updatePending && onListView()) { location.reload(); return; }
+  closeLightbox();
   releaseUrls();
   closeOpenCard = null;
   const h = location.hash.slice(1);
@@ -446,11 +447,8 @@ function renderDetail(id) {
     tasks = tasks.filter(x => x.id !== t.id);
     back();
   };
-  app.querySelectorAll('.gallery img').forEach(img => img.onclick = () => {
-    const lb = document.getElementById('lightbox');
-    lb.querySelector('img').src = img.src;
-    lb.hidden = false;
-  });
+  const imgs = [...app.querySelectorAll('.gallery img')];
+  imgs.forEach((img, i) => img.onclick = () => openLightbox(imgs.map(x => x.src), i));
 }
 
 function renderMenu() {
@@ -592,7 +590,36 @@ async function importBackup(file) {
   }
 }
 
-document.getElementById('lightbox').onclick = e => { e.currentTarget.hidden = true; };
+const lightbox = document.getElementById('lightbox');
+const lbTrack = lightbox.querySelector('.lb-track');
+const lbCount = lightbox.querySelector('.lb-count');
+lightbox.querySelector('.lb-close').innerHTML = UI.close;
+
+function updateLbCount() {
+  const n = lbTrack.children.length;
+  lbCount.textContent = n > 1 ? `${Math.round(lbTrack.scrollLeft / lbTrack.clientWidth) + 1} / ${n}` : '';
+}
+lbTrack.onscroll = updateLbCount;
+
+function openLightbox(srcs, index) {
+  lbTrack.innerHTML = srcs.map(s => `<div class="lb-slide"><img src="${s}" alt=""></div>`).join('');
+  lightbox.hidden = false;
+  lbTrack.scrollLeft = index * lbTrack.clientWidth;
+  updateLbCount();
+}
+
+const closeLightbox = () => { lightbox.hidden = true; lbTrack.innerHTML = ''; };
+lightbox.onclick = closeLightbox;
+document.addEventListener('keydown', e => {
+  if (lightbox.hidden) return;
+  if (e.key === 'Escape') closeLightbox();
+  const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+  if (step) {
+    const w = lbTrack.clientWidth;
+    lbTrack.scrollTo({ left: (Math.round(lbTrack.scrollLeft / w) + step) * w });
+    updateLbCount();
+  }
+});
 
 function checkDayChange() {
   const k = dayKey(new Date());

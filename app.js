@@ -1,4 +1,5 @@
-const APP_VERSION = '1.4（2026-10-21）';
+const APP_VERSION = '1.5（2026-10-21）';
+const MAX_IMAGES = 9;
 
 const CATEGORIES = [
   { id: 'sport', name: '運動', bg: '#4f8fe0', fg: '#ffffff', thumb: 'rgba(255,255,255,.22)' },
@@ -317,7 +318,7 @@ function renderNew() {
           <div class="thumb-grid" id="thumbs">${Object.entries(THUMBS).map(([k, v]) => `<button type="button" class="thumb-opt" data-thumb="${k}">${v.svg}<span>${v.name}</span></button>`).join('')}</div>
         </div>
         <div class="field">
-          <span class="label">圖片<em id="ic">0/3</em></span>
+          <span class="label">圖片<em id="ic">0/${MAX_IMAGES}</em></span>
           <div class="images" id="imgs"></div>
           <input type="file" id="file" accept="image/*" multiple hidden>
         </div>
@@ -354,9 +355,9 @@ function renderNew() {
 
   const renderImgs = () => {
     releaseUrls();
-    $('ic').textContent = `${d.images.length}/3`;
+    $('ic').textContent = `${d.images.length}/${MAX_IMAGES}`;
     $('imgs').innerHTML = d.images.map((b, i) => `<div class="img-tile"><img src="${objUrl(b)}" alt=""><button type="button" class="rm" data-i="${i}" aria-label="移除">${UI.close}</button></div>`).join('')
-      + (d.images.length < 3 ? `<button type="button" class="img-tile add" id="addimg" aria-label="加入圖片">${UI.image}</button>` : '');
+      + (d.images.length < MAX_IMAGES ? `<button type="button" class="img-tile add" id="addimg" aria-label="加入圖片">${UI.image}</button>` : '');
   };
   $('imgs').onclick = e => {
     const rm = e.target.closest('.rm');
@@ -364,7 +365,9 @@ function renderNew() {
     if (e.target.closest('#addimg')) $('file').click();
   };
   $('file').onchange = async e => {
-    const files = [...e.target.files].slice(0, 3 - d.images.length);
+    const picked = [...e.target.files];
+    const files = picked.slice(0, MAX_IMAGES - d.images.length);
+    if (picked.length > files.length) toast(`最多 ${MAX_IMAGES} 張，只加入前 ${files.length} 張`);
     e.target.value = '';
     for (const f of files) {
       try { d.images.push(await shrinkImage(f)); } catch { toast('無法讀取圖片'); }

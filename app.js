@@ -38,6 +38,9 @@ const UI = {
   check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
   close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
   image: svg('<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M20.5 16l-5-5-8.5 8.5"/>'),
+  more: svg('<circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/>'),
+  download: svg('<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/>'),
+  upload: svg('<path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4.5 19.5h15"/>'),
   bell: svg('<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/>'),
 };
 
@@ -152,6 +155,7 @@ function renderList() {
         </div>
         <div class="bar-actions">
           ${canAskBadge() ? `<button class="icon-btn" id="badge" aria-label="開啟圖示數字">${UI.bell}</button>` : ''}
+          <button class="icon-btn" id="menu" aria-label="備份與還原">${UI.more}</button>
           <button class="icon-btn primary" id="add" aria-label="新增">${UI.plus}</button>
         </div>
       </header>
@@ -160,6 +164,7 @@ function renderList() {
       </div>
     </section>`;
   document.getElementById('add').onclick = () => go('/new');
+  document.getElementById('menu').onclick = openSheet;
   const badgeBtn = document.getElementById('badge');
   if (badgeBtn) badgeBtn.onclick = async () => {
     await Notification.requestPermission();
@@ -438,6 +443,88 @@ function renderDetail(id) {
   });
 }
 
+function openSheet() {
+  const el = document.createElement('div');
+  el.className = 'sheet-wrap';
+  el.innerHTML = `
+    <div class="sheet">
+      <button type="button" id="export">${UI.download}<span>匯出備份</span></button>
+      <button type="button" id="import">${UI.upload}<span>從備份還原</span></button>
+      <button type="button" class="cancel" id="sheet-cancel">取消</button>
+      <input type="file" id="import-file" accept=".json,application/json" hidden>
+    </div>`;
+  document.body.appendChild(el);
+  const close = () => el.remove();
+  el.onclick = e => { if (e.target === el) close(); };
+  el.querySelector('#sheet-cancel').onclick = close;
+  el.querySelector('#export').onclick = async () => { close(); await exportBackup(); };
+  el.querySelector('#import').onclick = () => el.querySelector('#import-file').click();
+  el.querySelector('#import-file').onchange = async e => {
+    const f = e.target.files[0];
+    close();
+    if (f) await importBackup(f);
+  };
+}
+
+const blobToDataUrl = b => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(r.result);
+  r.onerror = () => rej(r.error);
+  r.readAsDataURL(b);
+});
+
+function dataUrlToBlob(s) {
+  const [head, data] = s.split(',');
+  const bin = atob(data);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: (head.match(/^data:([^;]+)/) || [])[1] || 'image/jpeg' });
+}
+
+async function exportBackup() {
+  try {
+    const out = [];
+    for (const t of tasks) out.push({ ...t, images: await Promise.all((t.images || []).map(blobToDataUrl)) });
+    const json = JSON.stringify({ app: 'todoapp', version: 1, exportedAt: new Date().toISOString(), tasks: out });
+    const name = `todo-backup-${dayKey(new Date())}.json`;
+    const file = new File([json], name, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); } catch (err) { if (err.name !== 'AbortError') throw err; }
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch {
+    toast('匯出失敗');
+  }
+}
+
+async function importBackup(file) {
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+    if (data.app !== 'todoapp' || !Array.isArray(data.tasks)) throw 0;
+  } catch {
+    toast('這不是有效的備份檔');
+    return;
+  }
+  const when = data.exportedAt ? new Date(data.exportedAt).toLocaleString('zh-TW') : '未知時間';
+  if (!confirm(`備份時間：${when}\n共 ${data.tasks.length} 筆事項\n\n還原後會取代目前所有資料，確定嗎？`)) return;
+  try {
+    const restored = data.tasks.map(t => ({ ...t, images: (t.images || []).map(dataUrlToBlob) }));
+    for (const t of tasks) await db.del(t.id);
+    for (const t of restored) await db.put(t);
+    tasks = restored;
+    route();
+    toast(`已還原 ${restored.length} 筆事項`);
+  } catch {
+    toast('還原失敗');
+  }
+}
+
 document.getElementById('lightbox').onclick = e => { e.currentTarget.hidden = true; };
 
 function checkDayChange() {
@@ -456,4 +543,8 @@ window.addEventListener('popstate', route);
   route();
 })();
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) location.reload(); });
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}

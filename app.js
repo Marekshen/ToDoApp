@@ -109,6 +109,7 @@ function back() {
 }
 
 function route() {
+  if (updatePending && onListView()) { location.reload(); return; }
   releaseUrls();
   closeOpenCard = null;
   const h = location.hash.slice(1);
@@ -593,7 +594,19 @@ function checkDayChange() {
   lastDay = k;
   route();
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDayChange(); });
+let updatePending = false;
+const onListView = () => { const h = location.hash.slice(1); return !h || h === '/'; };
+function onUpdate() {
+  updatePending = true;
+  if (onListView()) location.reload();
+  else toast('有新版本', '更新', () => location.reload());
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  checkDayChange();
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('check');
+});
 setInterval(checkDayChange, 60000);
 window.addEventListener('popstate', route);
 
@@ -605,6 +618,7 @@ window.addEventListener('popstate', route);
 
 if ('serviceWorker' in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) location.reload(); });
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) onUpdate(); });
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data === 'updated') onUpdate(); });
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

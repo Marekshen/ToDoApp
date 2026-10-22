@@ -1,4 +1,4 @@
-const APP_VERSION = '1.7（2026-10-22）';
+const APP_VERSION = '1.8（2026-10-22）';
 const MAX_IMAGES = 9;
 
 const CATEGORIES = [
@@ -69,7 +69,10 @@ const db = (() => {
   };
   return {
     all: () => run('readonly', s => s.getAll()),
-    put: task => run('readwrite', s => s.put(task)),
+    put: async task => {
+      if (task.images && task.images.length) task.images = await Promise.all(task.images.map(async b => new Blob([await b.arrayBuffer()], { type: b.type })));
+      return run('readwrite', s => s.put(task));
+    },
     del: id => run('readwrite', s => s.delete(id)),
   };
 })();
@@ -388,8 +391,9 @@ function renderForm(editId) {
     saveBtn.disabled = true;
     const fields = { title: d.title.trim(), desc: d.desc.trim(), category: d.category, freq: d.freq, thumb: d.thumb, images: d.images };
     if (t) {
-      await db.put({ ...t, ...fields });
-      Object.assign(t, fields);
+      const next = { ...t, ...fields };
+      await db.put(next);
+      Object.assign(t, next);
     } else {
       const now = Date.now();
       const task = { id: newId(), ...fields, order: now, createdAt: now, doneDate: null };

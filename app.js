@@ -1,4 +1,4 @@
-const APP_VERSION = '1.6（2026-10-21）';
+const APP_VERSION = '1.7（2026-10-22）';
 const MAX_IMAGES = 9;
 
 const CATEGORIES = [
@@ -46,6 +46,7 @@ const UI = {
   upload: svg('<path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4.5 19.5h15"/>'),
   calendar: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/>'),
   chevron: svg('<path d="M9 5l7 7-7 7"/>'),
+  edit: svg('<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
   bell: svg('<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/>'),
 };
 
@@ -117,7 +118,8 @@ function route() {
   releaseUrls();
   closeOpenCard = null;
   const h = location.hash.slice(1);
-  if (h === '/new') renderNew();
+  if (h === '/new') renderForm();
+  else if (h.startsWith('/edit/')) renderForm(decodeURIComponent(h.slice(6)));
   else if (h === '/menu') renderMenu();
   else if (h === '/week') renderWeek();
   else if (h.startsWith('/task/')) renderDetail(decodeURIComponent(h.slice(6)));
@@ -288,23 +290,27 @@ function chipsHTML(items, active, attr) {
   return items.map(i => `<button type="button" class="chip${i.id === active ? ' active' : ''}" data-${attr}="${i.id}">${i.name}</button>`).join('');
 }
 
-function renderNew() {
-  const d = { title: '', desc: '', category: 'sport', freq: 'daily', thumb: null, images: [] };
+function renderForm(editId) {
+  const t = editId && tasks.find(x => x.id === editId);
+  if (editId && !t) { history.replaceState(null, '', '#/'); renderList(); return; }
+  const d = t
+    ? { title: t.title, desc: t.desc || '', category: t.category, freq: t.freq, thumb: t.thumb || null, images: [...(t.images || [])] }
+    : { title: '', desc: '', category: 'sport', freq: 'daily', thumb: null, images: [] };
   app.innerHTML = `
     <section class="view">
       <header class="bar sub">
         <button class="icon-btn" id="cancel" aria-label="返回">${UI.back}</button>
-        <h2>新增事項</h2>
-        <button class="save-btn" id="save" disabled>儲存</button>
+        <h2>${t ? '編輯事項' : '新增事項'}</h2>
+        <button class="save-btn" id="save"${t ? '' : ' disabled'}>儲存</button>
       </header>
       <div class="scroll form">
         <label class="field">
-          <span class="label">標題<em id="tc">0/10</em></span>
-          <input id="title" maxlength="10" placeholder="例如：喝水 300cc" autocomplete="off">
+          <span class="label">標題<em id="tc">${[...d.title].length}/10</em></span>
+          <input id="title" maxlength="10" placeholder="例如：喝水 300cc" autocomplete="off" value="${esc(d.title)}">
         </label>
         <label class="field">
-          <span class="label">說明<em id="dc">0/100</em></span>
-          <textarea id="desc" maxlength="100" rows="3" placeholder="選填"></textarea>
+          <span class="label">說明<em id="dc">${d.desc.length}/100</em></span>
+          <textarea id="desc" maxlength="100" rows="3" placeholder="選填">${esc(d.desc)}</textarea>
         </label>
         <div class="field">
           <span class="label">類別</span>
@@ -316,7 +322,7 @@ function renderNew() {
         </div>
         <div class="field">
           <span class="label">縮圖<em>未選擇則使用預設</em></span>
-          <div class="thumb-grid" id="thumbs">${Object.entries(THUMBS).map(([k, v]) => `<button type="button" class="thumb-opt" data-thumb="${k}">${v.svg}<span>${v.name}</span></button>`).join('')}</div>
+          <div class="thumb-grid" id="thumbs">${Object.entries(THUMBS).map(([k, v]) => `<button type="button" class="thumb-opt${k === d.thumb ? ' active' : ''}" data-thumb="${k}">${v.svg}<span>${v.name}</span></button>`).join('')}</div>
         </div>
         <div class="field">
           <span class="label">圖片<em id="ic">0/${MAX_IMAGES}</em></span>
@@ -380,10 +386,16 @@ function renderNew() {
   saveBtn.onclick = async () => {
     if (!d.title.trim()) return;
     saveBtn.disabled = true;
-    const now = Date.now();
-    const task = { id: newId(), title: d.title.trim(), desc: d.desc.trim(), category: d.category, freq: d.freq, thumb: d.thumb, images: d.images, order: now, createdAt: now, doneDate: null };
-    await db.put(task);
-    tasks.push(task);
+    const fields = { title: d.title.trim(), desc: d.desc.trim(), category: d.category, freq: d.freq, thumb: d.thumb, images: d.images };
+    if (t) {
+      await db.put({ ...t, ...fields });
+      Object.assign(t, fields);
+    } else {
+      const now = Date.now();
+      const task = { id: newId(), ...fields, order: now, createdAt: now, doneDate: null };
+      await db.put(task);
+      tasks.push(task);
+    }
     back();
   };
 }
@@ -414,6 +426,7 @@ function renderDetail(id) {
       <header class="bar sub">
         <button class="icon-btn" id="back" aria-label="回上一頁">${UI.back}</button>
         <span class="grow"></span>
+        <button class="icon-btn" id="edit" aria-label="編輯">${UI.edit}</button>
         <button class="icon-btn" id="copy" aria-label="複製">${UI.copy}</button>
         <button class="icon-btn danger" id="del" aria-label="刪除">${UI.trash}</button>
       </header>
@@ -432,6 +445,7 @@ function renderDetail(id) {
       </div>
     </section>`;
   document.getElementById('back').onclick = back;
+  document.getElementById('edit').onclick = () => go('/edit/' + encodeURIComponent(t.id));
   document.getElementById('copy').onclick = async () => {
     const now = Date.now();
     const copy = { ...t, id: newId(), images: [...(t.images || [])], createdAt: now, doneDate: null };

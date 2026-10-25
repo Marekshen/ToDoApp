@@ -1,4 +1,4 @@
-const APP_VERSION = '2.1（2026-10-26）';
+const APP_VERSION = '2.2（2026-10-26）';
 const MAX_IMAGES = 9;
 const MAX_VIDEOS = 3;
 const MAX_VIDEO_MB = 100;
@@ -213,7 +213,7 @@ function renderList() {
 function slotHTML(t) {
   const c = catOf(t);
   return `
-    <div class="slot" data-id="${esc(t.id)}">
+    <div class="slot" data-id="${esc(t.id)}" data-group="${t.pinned ? 'pin' : ''}">
       <div class="under"><button class="done-btn" type="button">${UI.check}<span>完成</span></button></div>
       <div class="card" style="background-color:${c.bg};color:${c.fg}">
         ${thumbHTML(t)}
@@ -232,6 +232,52 @@ function bindSwipe(slot, task) {
   const base = hexRgb(cat.bg);
   const OPEN = 104;
   let x = 0, startX = 0, startY = 0, startOffset = 0, tracking = false, axis = null, moved = false, samples = [];
+  let pressTimer = null, drag = null;
+  const list = slot.parentNode;
+
+  const layout = () => {
+    const { group, from, step, lastY, scroll0 } = drag;
+    const y = Math.max(-from * step, Math.min((group.length - 1 - from) * step, lastY - startY + list.scrollTop - scroll0));
+    slot.style.transform = `translateY(${y}px) scale(1.03)`;
+    const to = from + Math.round(y / step);
+    if (to === drag.to) return;
+    drag.to = to;
+    group.forEach((s, i) => {
+      if (s === slot) return;
+      const shift = i > from && i <= to ? -step : i < from && i >= to ? step : 0;
+      s.style.transform = shift ? `translateY(${shift}px)` : '';
+    });
+  };
+  const tick = () => {
+    const r = list.getBoundingClientRect();
+    const v = drag.lastY < r.top + 60 ? -8 : drag.lastY > r.bottom - 60 ? 8 : 0;
+    if (v) { list.scrollTop += v; layout(); }
+    drag.raf = requestAnimationFrame(tick);
+  };
+  const startDrag = pid => {
+    if (!tracking || x !== 0) return;
+    const group = [...list.querySelectorAll(`.slot[data-group="${slot.dataset.group}"]`)];
+    if (group.length < 2) return;
+    moved = true;
+    drag = { group, from: group.indexOf(slot), to: group.indexOf(slot), step: group[1].offsetTop - group[0].offsetTop, lastY: startY, scroll0: list.scrollTop };
+    try { card.setPointerCapture(pid); } catch {}
+    list.classList.add('sorting');
+    slot.classList.add('dragging');
+    if (navigator.vibrate) navigator.vibrate(10);
+    layout();
+    drag.raf = requestAnimationFrame(tick);
+  };
+  const endDrag = () => {
+    cancelAnimationFrame(drag.raf);
+    const { group, from, to } = drag;
+    drag = null;
+    if (to !== from) reorder(task, group.map(s => tasks.find(t => t.id === s.dataset.id)), from, to);
+    const top = list.scrollTop;
+    renderList();
+    document.getElementById('list').scrollTop = top;
+  };
+  card.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
+  card.addEventListener('contextmenu', e => e.preventDefault());
 
   const set = (nx, animate) => {
     x = nx;
@@ -254,12 +300,16 @@ function bindSwipe(slot, task) {
     tracking = true; axis = null; moved = false;
     startX = e.clientX; startY = e.clientY; startOffset = x;
     samples = [{ x: e.clientX, t: e.timeStamp }];
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => startDrag(e.pointerId), 400);
   });
   card.addEventListener('pointermove', e => {
+    if (drag) { drag.lastY = e.clientY; layout(); return; }
     if (!tracking) return;
     const dx = e.clientX - startX, dy = e.clientY - startY;
     if (!axis) {
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      clearTimeout(pressTimer);
       axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
       moved = true;
       if (axis === 'x') card.setPointerCapture(e.pointerId);
@@ -270,6 +320,8 @@ function bindSwipe(slot, task) {
     set(Math.min(0, startOffset + dx), false);
   });
   const end = () => {
+    clearTimeout(pressTimer);
+    if (drag) { tracking = false; endDrag(); return; }
     if (!tracking) return;
     tracking = false;
     if (axis !== 'x') return;
@@ -287,6 +339,21 @@ function bindSwipe(slot, task) {
     else go('/task/' + encodeURIComponent(task.id));
   });
   slot.querySelector('.done-btn').addEventListener('click', () => complete(task, slot, card));
+}
+
+function reorder(task, group, from, to) {
+  group.splice(from, 1);
+  group.splice(to, 0, task);
+  const prev = group[to - 1], next = group[to + 1];
+  const o = prev && next ? (prev.order + next.order) / 2 : prev ? prev.order + 1 : next.order - 1;
+  if ((!prev || o > prev.order) && (!next || o < next.order)) {
+    task.order = o;
+    db.put(task);
+    return;
+  }
+  const all = [...tasks].filter(t => t !== task).sort(byOrder);
+  all.splice(next ? all.indexOf(next) : all.indexOf(prev) + 1, 0, task);
+  all.forEach((t, i) => { if (t.order !== i) { t.order = i; db.put(t); } });
 }
 
 async function complete(task, slot, card) {

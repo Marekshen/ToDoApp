@@ -24,6 +24,7 @@ Service Worker 需要 localhost 或 HTTPS，不能用 `file://` 開啟。
   - 日期工具：`dayKey`（本地時間 `YYYY-MM-DD`）、`isoDow`（週一=1…週日=7）、`mondayKey`
   - `isDueToday`：判斷今天是否顯示該事項（核心規則，見下方）
   - Hash 路由 `route()`：`#/`（今天清單）、`#/new`、`#/edit/:id`、`#/task/:id`、`#/menu`、`#/week`
+  - `bindSwipe()`：今天清單卡片的手勢，左滑完成；長按 400ms 進入拖曳排序（只在同一個 `data-group` 內移動，靠近邊緣自動捲動）
   - 每個畫面一個 `renderXxx()`，以樣板字串整個覆寫 `app.innerHTML`，再綁定事件
   - 備份匯出／還原、燈箱、跨日檢查、Service Worker 更新處理
 - `sw.js`：cache-first。導覽請求或前景切回（`postMessage('check')`）時背景重抓 `ASSETS`，以位元組比對有變動才更新快取並通知頁面 `'updated'`。
@@ -41,7 +42,7 @@ Service Worker 需要 localhost 或 HTTPS，不能用 `file://` 開啟。
   images,             // Blob[]，最多 9 張，已縮至 1280px JPEG
   videoIds,           // videos store 的 id[]，最多 3 部、單檔 100MB；複製事項時共用同一份影片
   pinned,             // 置頂（舊資料可能沒有此欄位，視為 false）
-  order, createdAt,   // 排序用（毫秒時間戳）；byOrder 先比 pinned
+  order, createdAt,   // 排序用；新建時為毫秒時間戳，拖曳後由 reorder() 設為鄰居的中間值（必要時全部重新編號）；byOrder 先比 pinned
   doneDate            // 最後完成日 'YYYY-MM-DD' 或 null
 }
 ```

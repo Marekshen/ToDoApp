@@ -61,6 +61,7 @@ svg { width: 100%; height: 100%; display: block; }
 }
 .icon-btn.primary { background: var(--accent); color: #fff; }
 .icon-btn.danger { color: var(--danger); }
+.icon-btn.on { background: var(--accent); color: #fff; }
 .icon-btn:active { transform: scale(.94); }
 
 .save-btn {
@@ -128,6 +129,7 @@ svg { width: 100%; height: 100%; display: block; }
 .info { min-width: 0; }
 .title { font-size: 21px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .meta { font-size: 13px; opacity: .72; margin-top: 4px; }
+.meta .pin svg { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 3px; }
 
 .empty { text-align: center; color: var(--muted); padding-top: 30vh; font-size: 16px; }
 

@@ -38,7 +38,8 @@ Service Worker 需要 localhost 或 HTTPS，不能用 `file://` 開啟。
   freq,               // FREQS 的 id
   thumb,              // THUMBS 的 key 或 null（null 顯示 other 圖示）
   images,             // Blob[]，最多 9 張，已縮至 1280px JPEG
-  order, createdAt,   // 排序用（毫秒時間戳）
+  pinned,             // 置頂（舊資料可能沒有此欄位，視為 false）
+  order, createdAt,   // 排序用（毫秒時間戳）；byOrder 先比 pinned
   doneDate            // 最後完成日 'YYYY-MM-DD' 或 null
 }
 ```

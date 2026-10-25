@@ -1,4 +1,4 @@
-const APP_VERSION = '2.0（2026-10-26）';
+const APP_VERSION = '2.1（2026-10-26）';
 const MAX_IMAGES = 9;
 const MAX_VIDEOS = 3;
 const MAX_VIDEO_MB = 100;
@@ -86,7 +86,8 @@ const db = (() => {
     video: id => run('videos', 'readonly', s => s.get(id)),
     putVideo: async v => {
       const blob = await copy(v.blob);
-      return run('videos', 'readwrite', s => s.put({ ...v, blob }));
+      const poster = v.poster ? await copy(v.poster) : null;
+      return run('videos', 'readwrite', s => s.put({ ...v, blob, poster }));
     },
     delVideo: id => run('videos', 'readwrite', s => s.delete(id)),
     videoIds: () => run('videos', 'readonly', s => s.getAllKeys()),
@@ -389,7 +390,8 @@ function renderForm(editId) {
     $('thumbs').querySelectorAll('.thumb-opt').forEach(c => c.classList.toggle('active', c.dataset.thumb === d.thumb));
   };
 
-  const vidTile = v => v.blob ? `<video src="${objUrl(v.blob)}#t=0.1" muted playsinline preload="metadata"></video>`
+  const vidTile = v => v.poster ? `<img src="${objUrl(v.poster)}" alt="">`
+    : v.blob ? `<video src="${objUrl(v.blob)}#t=0.1" muted playsinline preload="metadata"></video>`
     : `<span class="missing">${v.blob === null ? '不在此裝置' : ''}</span>`;
   const renderImgs = () => {
     releaseUrls();
@@ -410,23 +412,34 @@ function renderForm(editId) {
     if (rm) { d.videos.splice(+rm.dataset.i, 1); renderImgs(); return; }
     if (e.target.closest('#addvid')) $('vfile').click();
   };
-  $('vfile').onchange = e => {
+  $('vfile').onchange = async e => {
     const picked = [...e.target.files];
     e.target.value = '';
     const ok = picked.filter(f => f.size <= MAX_VIDEO_MB * 1048576);
     if (ok.length < picked.length) toast(`影片單檔不可超過 ${MAX_VIDEO_MB}MB`);
     const files = ok.slice(0, MAX_VIDEOS - d.videos.length);
     if (ok.length > files.length) toast(`最多 ${MAX_VIDEOS} 部影片`);
-    d.videos.push(...files.map(f => ({ id: newId(), blob: f, name: f.name, isNew: true })));
+    const added = files.map(f => ({ id: newId(), blob: f, name: f.name, isNew: true }));
+    d.videos.push(...added);
     renderImgs();
+    const box = $('vids');
+    for (const v of added) {
+      v.poster = await videoPoster(v.blob).catch(() => null);
+      if (box.isConnected && d.videos.includes(v)) renderImgs();
+    }
   };
   if (d.videos.length) {
     const box = $('vids');
     const ids = d.videos.map(v => v.id);
-    Promise.all(ids.map(db.video)).then(vs => {
+    Promise.all(ids.map(id => db.video(id).then(ensurePoster))).then(vs => {
       if (!box.isConnected) return;
-      const found = new Map(ids.map((id, i) => [id, vs[i] ? vs[i].blob : null]));
-      d.videos.forEach(v => { if (!v.isNew) v.blob = found.get(v.id); });
+      const found = new Map(ids.map((id, i) => [id, vs[i]]));
+      d.videos.forEach(v => {
+        if (v.isNew) return;
+        const r = found.get(v.id);
+        v.blob = r ? r.blob : null;
+        v.poster = r && r.poster;
+      });
       renderImgs();
     });
   }
@@ -448,7 +461,7 @@ function renderForm(editId) {
     saveBtn.textContent = '儲存中';
     const fields = { title: d.title.trim(), desc: d.desc.trim(), category: d.category, freq: d.freq, thumb: d.thumb, images: d.images, videoIds: d.videos.map(v => v.id) };
     try {
-      for (const v of d.videos) if (v.isNew) await db.putVideo({ id: v.id, blob: v.blob, name: v.name });
+      for (const v of d.videos) if (v.isNew) await db.putVideo({ id: v.id, blob: v.blob, name: v.name, poster: v.poster });
       if (t) {
         const next = { ...t, ...fields };
         await db.put(next);
@@ -486,6 +499,40 @@ async function shrinkImage(file, max = 1280) {
   } finally {
     URL.revokeObjectURL(src);
   }
+}
+
+async function videoPoster(blob, max = 640) {
+  const src = URL.createObjectURL(blob);
+  const once = (v, ev) => new Promise((res, rej) => {
+    const timer = setTimeout(rej, 8000);
+    v.addEventListener(ev, () => { clearTimeout(timer); res(); }, { once: true });
+    v.addEventListener('error', () => { clearTimeout(timer); rej(); }, { once: true });
+  });
+  try {
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    v.src = src;
+    await once(v, 'loadeddata');
+    v.currentTime = isFinite(v.duration) ? Math.min(0.5, v.duration / 2) : 0.1;
+    await once(v, 'seeked');
+    const s = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(v.videoWidth * s);
+    cv.height = Math.round(v.videoHeight * s);
+    cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+    return await new Promise((res, rej) => cv.toBlob(b => (b ? res(b) : rej()), 'image/jpeg', 0.8));
+  } finally {
+    URL.revokeObjectURL(src);
+  }
+}
+
+async function ensurePoster(r) {
+  if (!r || r.poster) return r;
+  const poster = await videoPoster(r.blob).catch(() => null);
+  if (poster) { r.poster = poster; await db.putVideo(r).catch(() => {}); }
+  return r;
 }
 
 function renderDetail(id) {
@@ -544,9 +591,9 @@ function renderDetail(id) {
     back();
   };
   const box = document.getElementById('vids');
-  if (box) Promise.all(t.videoIds.map(db.video)).then(vs => {
+  if (box) Promise.all(t.videoIds.map(id => db.video(id).then(ensurePoster))).then(vs => {
     if (!box.isConnected) return;
-    box.innerHTML = vs.map(v => v ? `<video src="${objUrl(v.blob)}" controls playsinline preload="metadata"></video>` : '<div class="missing">影片不在此裝置</div>').join('');
+    box.innerHTML = vs.map(v => v ? `<video src="${objUrl(v.blob)}"${v.poster ? ` poster="${objUrl(v.poster)}"` : ''} controls playsinline preload="metadata"></video>` : '<div class="missing">影片不在此裝置</div>').join('');
   });
   const imgs = [...app.querySelectorAll('.gallery img')];
   imgs.forEach((img, i) => img.onclick = () => openLightbox(imgs.map(x => x.src), i));

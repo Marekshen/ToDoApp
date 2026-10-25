@@ -50,7 +50,7 @@ Service Worker 需要 localhost 或 HTTPS，不能用 `file://` 開啟。
 - 一般頻率：今天是該頻率的日子且 `doneDate !== 今天` 就顯示。
 - `weekly`：`doneDate` 早於本週一才顯示（本週完成一次即隱藏到下週）。
 
-`videos` store 的資料：`{ id, blob, name }`。影片刻意與事項分開存，讓完成、編輯事項時不必搬動大檔案。
+`videos` store 的資料：`{ id, blob, name, poster }`。`poster` 是加入時用 `videoPoster()` 截的 JPEG 封面（iOS Safari 不會自動畫出影片第一格），舊資料缺少時由 `ensurePoster()` 補上。影片刻意與事項分開存，讓完成、編輯事項時不必搬動大檔案。
 
 備份 JSON 格式：`{ app: 'todoapp', version: 1, exportedAt, tasks }`，圖片轉為 data URL。**影片不匯出**，只會帶出 `videoIds`；還原時影片保留在本機，對得上 id 的事項繼續使用，其餘由 `gcVideos()` 清除。改動資料欄位時要同時考慮舊備份的還原相容性。
 

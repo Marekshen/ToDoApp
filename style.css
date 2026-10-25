@@ -189,7 +189,8 @@ input:focus, textarea:focus { border-color: var(--accent); }
   overflow: hidden;
   background: var(--surface);
 }
-.img-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.img-tile img, .img-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.img-tile .missing { display: flex; height: 100%; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); background: var(--line); }
 .img-tile.add { border: 1.5px dashed #b8c0ca; color: var(--muted); padding: 30%; }
 .img-tile .rm {
   position: absolute; top: 6px; right: 6px;
@@ -227,6 +228,9 @@ input:focus, textarea:focus { border-color: var(--accent); }
   white-space: pre-wrap; word-break: break-word;
 }
 
+.videos { display: grid; gap: 10px; margin-top: 16px; }
+.videos video { width: 100%; max-height: 70vh; border-radius: 14px; background: #000; display: block; }
+.videos .missing { background: var(--surface); border-radius: 16px; padding: 14px 16px; color: var(--muted); font-size: 14px; }
 .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
 .gallery img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 14px; display: block; cursor: zoom-in; }
 

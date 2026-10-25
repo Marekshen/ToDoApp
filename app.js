@@ -1,5 +1,7 @@
-const APP_VERSION = '1.9（2026-10-26）';
+const APP_VERSION = '2.0（2026-10-26）';
 const MAX_IMAGES = 9;
+const MAX_VIDEOS = 3;
+const MAX_VIDEO_MB = 100;
 
 const CATEGORIES = [
   { id: 'sport', name: '運動', bg: '#4f8fe0', fg: '#ffffff', thumb: 'rgba(255,255,255,.22)' },
@@ -47,6 +49,7 @@ const UI = {
   calendar: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/>'),
   chevron: svg('<path d="M9 5l7 7-7 7"/>'),
   edit: svg('<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
+  video: svg('<rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3z"/>'),
   pin: svg('<path d="M12 16.5v5M8.5 3.5h7l-1 6 3.5 3.5v2h-12v-2l3.5-3.5z"/>'),
   bell: svg('<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/>'),
 };
@@ -54,29 +57,46 @@ const UI = {
 const db = (() => {
   let conn;
   const open = () => conn || (conn = new Promise((res, rej) => {
-    const r = indexedDB.open('todoapp', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('tasks', { keyPath: 'id' });
-    r.onsuccess = () => res(r.result);
+    const r = indexedDB.open('todoapp', 2);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      if (!d.objectStoreNames.contains('tasks')) d.createObjectStore('tasks', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('videos')) d.createObjectStore('videos', { keyPath: 'id' });
+    };
+    r.onsuccess = () => { r.result.onversionchange = () => r.result.close(); res(r.result); };
     r.onerror = () => rej(r.error);
   }));
-  const run = async (mode, fn) => {
+  const run = async (store, mode, fn) => {
     const d = await open();
     return new Promise((res, rej) => {
-      const t = d.transaction('tasks', mode);
-      const req = fn(t.objectStore('tasks'));
+      const t = d.transaction(store, mode);
+      const req = fn(t.objectStore(store));
       t.oncomplete = () => res(req.result);
       t.onerror = () => rej(t.error);
     });
   };
+  const copy = async b => new Blob([await b.arrayBuffer()], { type: b.type });
   return {
-    all: () => run('readonly', s => s.getAll()),
+    all: () => run('tasks', 'readonly', s => s.getAll()),
     put: async task => {
-      if (task.images && task.images.length) task.images = await Promise.all(task.images.map(async b => new Blob([await b.arrayBuffer()], { type: b.type })));
-      return run('readwrite', s => s.put(task));
+      if (task.images && task.images.length) task.images = await Promise.all(task.images.map(copy));
+      return run('tasks', 'readwrite', s => s.put(task));
     },
-    del: id => run('readwrite', s => s.delete(id)),
+    del: id => run('tasks', 'readwrite', s => s.delete(id)),
+    video: id => run('videos', 'readonly', s => s.get(id)),
+    putVideo: async v => {
+      const blob = await copy(v.blob);
+      return run('videos', 'readwrite', s => s.put({ ...v, blob }));
+    },
+    delVideo: id => run('videos', 'readwrite', s => s.delete(id)),
+    videoIds: () => run('videos', 'readonly', s => s.getAllKeys()),
   };
 })();
+
+async function gcVideos() {
+  const used = new Set(tasks.flatMap(t => t.videoIds || []));
+  for (const id of await db.videoIds()) if (!used.has(id)) await db.delVideo(id);
+}
 
 const pad = n => String(n).padStart(2, '0');
 const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -298,8 +318,8 @@ function renderForm(editId) {
   const t = editId && tasks.find(x => x.id === editId);
   if (editId && !t) { history.replaceState(null, '', '#/'); renderList(); return; }
   const d = t
-    ? { title: t.title, desc: t.desc || '', category: t.category, freq: t.freq, thumb: t.thumb || null, images: [...(t.images || [])] }
-    : { title: '', desc: '', category: 'sport', freq: 'daily', thumb: null, images: [] };
+    ? { title: t.title, desc: t.desc || '', category: t.category, freq: t.freq, thumb: t.thumb || null, images: [...(t.images || [])], videos: (t.videoIds || []).map(id => ({ id })) }
+    : { title: '', desc: '', category: 'sport', freq: 'daily', thumb: null, images: [], videos: [] };
   app.innerHTML = `
     <section class="view">
       <header class="bar sub">
@@ -333,6 +353,11 @@ function renderForm(editId) {
           <div class="images" id="imgs"></div>
           <input type="file" id="file" accept="image/*" multiple hidden>
         </div>
+        <div class="field">
+          <span class="label">影片<em id="vc">0/${MAX_VIDEOS}</em></span>
+          <div class="images" id="vids"></div>
+          <input type="file" id="vfile" accept="video/*" multiple hidden>
+        </div>
       </div>
     </section>`;
 
@@ -364,17 +389,47 @@ function renderForm(editId) {
     $('thumbs').querySelectorAll('.thumb-opt').forEach(c => c.classList.toggle('active', c.dataset.thumb === d.thumb));
   };
 
+  const vidTile = v => v.blob ? `<video src="${objUrl(v.blob)}#t=0.1" muted playsinline preload="metadata"></video>`
+    : `<span class="missing">${v.blob === null ? '不在此裝置' : ''}</span>`;
   const renderImgs = () => {
     releaseUrls();
     $('ic').textContent = `${d.images.length}/${MAX_IMAGES}`;
     $('imgs').innerHTML = d.images.map((b, i) => `<div class="img-tile"><img src="${objUrl(b)}" alt=""><button type="button" class="rm" data-i="${i}" aria-label="移除">${UI.close}</button></div>`).join('')
       + (d.images.length < MAX_IMAGES ? `<button type="button" class="img-tile add" id="addimg" aria-label="加入圖片">${UI.image}</button>` : '');
+    $('vc').textContent = `${d.videos.length}/${MAX_VIDEOS}`;
+    $('vids').innerHTML = d.videos.map((v, i) => `<div class="img-tile">${vidTile(v)}<button type="button" class="rm" data-i="${i}" aria-label="移除">${UI.close}</button></div>`).join('')
+      + (d.videos.length < MAX_VIDEOS ? `<button type="button" class="img-tile add" id="addvid" aria-label="加入影片">${UI.video}</button>` : '');
   };
   $('imgs').onclick = e => {
     const rm = e.target.closest('.rm');
     if (rm) { d.images.splice(+rm.dataset.i, 1); renderImgs(); return; }
     if (e.target.closest('#addimg')) $('file').click();
   };
+  $('vids').onclick = e => {
+    const rm = e.target.closest('.rm');
+    if (rm) { d.videos.splice(+rm.dataset.i, 1); renderImgs(); return; }
+    if (e.target.closest('#addvid')) $('vfile').click();
+  };
+  $('vfile').onchange = e => {
+    const picked = [...e.target.files];
+    e.target.value = '';
+    const ok = picked.filter(f => f.size <= MAX_VIDEO_MB * 1048576);
+    if (ok.length < picked.length) toast(`影片單檔不可超過 ${MAX_VIDEO_MB}MB`);
+    const files = ok.slice(0, MAX_VIDEOS - d.videos.length);
+    if (ok.length > files.length) toast(`最多 ${MAX_VIDEOS} 部影片`);
+    d.videos.push(...files.map(f => ({ id: newId(), blob: f, name: f.name, isNew: true })));
+    renderImgs();
+  };
+  if (d.videos.length) {
+    const box = $('vids');
+    const ids = d.videos.map(v => v.id);
+    Promise.all(ids.map(db.video)).then(vs => {
+      if (!box.isConnected) return;
+      const found = new Map(ids.map((id, i) => [id, vs[i] ? vs[i].blob : null]));
+      d.videos.forEach(v => { if (!v.isNew) v.blob = found.get(v.id); });
+      renderImgs();
+    });
+  }
   $('file').onchange = async e => {
     const picked = [...e.target.files];
     const files = picked.slice(0, MAX_IMAGES - d.images.length);
@@ -390,17 +445,28 @@ function renderForm(editId) {
   saveBtn.onclick = async () => {
     if (!d.title.trim()) return;
     saveBtn.disabled = true;
-    const fields = { title: d.title.trim(), desc: d.desc.trim(), category: d.category, freq: d.freq, thumb: d.thumb, images: d.images };
-    if (t) {
-      const next = { ...t, ...fields };
-      await db.put(next);
-      Object.assign(t, next);
-    } else {
-      const now = Date.now();
-      const task = { id: newId(), ...fields, order: now, createdAt: now, doneDate: null };
-      await db.put(task);
-      tasks.push(task);
+    saveBtn.textContent = '儲存中';
+    const fields = { title: d.title.trim(), desc: d.desc.trim(), category: d.category, freq: d.freq, thumb: d.thumb, images: d.images, videoIds: d.videos.map(v => v.id) };
+    try {
+      for (const v of d.videos) if (v.isNew) await db.putVideo({ id: v.id, blob: v.blob, name: v.name });
+      if (t) {
+        const next = { ...t, ...fields };
+        await db.put(next);
+        Object.assign(t, next);
+      } else {
+        const now = Date.now();
+        const task = { id: newId(), ...fields, order: now, createdAt: now, doneDate: null };
+        await db.put(task);
+        tasks.push(task);
+      }
+    } catch {
+      toast('儲存失敗，可能是空間不足');
+      saveBtn.disabled = false;
+      saveBtn.textContent = '儲存';
+      gcVideos().catch(() => {});
+      return;
     }
+    await gcVideos();
     back();
   };
 }
@@ -447,6 +513,7 @@ function renderDetail(id) {
           <div><dt>縮圖</dt><dd>${thumbOf(t).name}</dd></div>
         </dl>
         ${t.desc ? `<p class="desc">${esc(t.desc)}</p>` : ''}
+        ${t.videoIds && t.videoIds.length ? '<div class="videos" id="vids"></div>' : ''}
         ${t.images && t.images.length ? `<div class="gallery">${t.images.map(b => `<img src="${objUrl(b)}" alt="">`).join('')}</div>` : ''}
       </div>
     </section>`;
@@ -473,8 +540,14 @@ function renderDetail(id) {
     if (!confirm(`確定要刪除「${t.title}」嗎？刪除後無法復原。`)) return;
     await db.del(t.id);
     tasks = tasks.filter(x => x.id !== t.id);
+    await gcVideos();
     back();
   };
+  const box = document.getElementById('vids');
+  if (box) Promise.all(t.videoIds.map(db.video)).then(vs => {
+    if (!box.isConnected) return;
+    box.innerHTML = vs.map(v => v ? `<video src="${objUrl(v.blob)}" controls playsinline preload="metadata"></video>` : '<div class="missing">影片不在此裝置</div>').join('');
+  });
   const imgs = [...app.querySelectorAll('.gallery img')];
   imgs.forEach((img, i) => img.onclick = () => openLightbox(imgs.map(x => x.src), i));
 }
@@ -611,6 +684,7 @@ async function importBackup(file) {
     for (const t of tasks) await db.del(t.id);
     for (const t of restored) await db.put(t);
     tasks = restored;
+    await gcVideos();
     route();
     toast(`已還原 ${restored.length} 筆事項`);
   } catch {

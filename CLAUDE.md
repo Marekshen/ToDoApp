@@ -19,7 +19,8 @@ Service Worker 需要 localhost 或 HTTPS，不能用 `file://` 開啟。
 - `index.html`：只有 `#app`、`#toast`、`#lightbox` 三個容器，載入 `app.js`（非 module 的一般 script）。
 - `app.js`：全部邏輯集中在單一檔案，依序為：
   - 常數：`APP_VERSION`、`MAX_IMAGES`、`CATEGORIES`、`FREQS`、`THUMBS`（內嵌 SVG 圖示）、`UI`（介面圖示）
-  - `db`：IndexedDB 包裝（資料庫 `todoapp` v1，object store `tasks`，keyPath `id`），提供 `all` / `put` / `del`
+  - `db`：IndexedDB 包裝（資料庫 `todoapp` v2，object store `tasks` 與 `videos`，keyPath 皆為 `id`），提供 `all` / `put` / `del` 與 `video` / `putVideo` / `delVideo` / `videoIds`
+  - `gcVideos()`：刪除沒有任何事項引用的影片；儲存、刪除事項、還原備份後都要呼叫
   - 日期工具：`dayKey`（本地時間 `YYYY-MM-DD`）、`isoDow`（週一=1…週日=7）、`mondayKey`
   - `isDueToday`：判斷今天是否顯示該事項（核心規則，見下方）
   - Hash 路由 `route()`：`#/`（今天清單）、`#/new`、`#/edit/:id`、`#/task/:id`、`#/menu`、`#/week`
@@ -38,6 +39,7 @@ Service Worker 需要 localhost 或 HTTPS，不能用 `file://` 開啟。
   freq,               // FREQS 的 id
   thumb,              // THUMBS 的 key 或 null（null 顯示 other 圖示）
   images,             // Blob[]，最多 9 張，已縮至 1280px JPEG
+  videoIds,           // videos store 的 id[]，最多 3 部、單檔 100MB；複製事項時共用同一份影片
   pinned,             // 置頂（舊資料可能沒有此欄位，視為 false）
   order, createdAt,   // 排序用（毫秒時間戳）；byOrder 先比 pinned
   doneDate            // 最後完成日 'YYYY-MM-DD' 或 null
@@ -48,7 +50,9 @@ Service Worker 需要 localhost 或 HTTPS，不能用 `file://` 開啟。
 - 一般頻率：今天是該頻率的日子且 `doneDate !== 今天` 就顯示。
 - `weekly`：`doneDate` 早於本週一才顯示（本週完成一次即隱藏到下週）。
 
-備份 JSON 格式：`{ app: 'todoapp', version: 1, exportedAt, tasks }`，圖片轉為 data URL。改動資料欄位時要同時考慮舊備份的還原相容性。
+`videos` store 的資料：`{ id, blob, name }`。影片刻意與事項分開存，讓完成、編輯事項時不必搬動大檔案。
+
+備份 JSON 格式：`{ app: 'todoapp', version: 1, exportedAt, tasks }`，圖片轉為 data URL。**影片不匯出**，只會帶出 `videoIds`；還原時影片保留在本機，對得上 id 的事項繼續使用，其餘由 `gcVideos()` 清除。改動資料欄位時要同時考慮舊備份的還原相容性。
 
 ## 開發慣例
 
@@ -59,7 +63,7 @@ Service Worker 需要 localhost 或 HTTPS，不能用 `file://` 開啟。
 - 介面文字一律使用繁體中文（台灣用語）；圖示用 `svg()` 輔助函式寫成 24×24 線條 SVG。
 - 用 `URL.createObjectURL` 顯示圖片時要走 `objUrl()`，才會在換頁時被 `releaseUrls()` 釋放。
 - 換頁用 `go(path)` / `back()`，不要直接改 `location.hash`。
-- 修改 IndexedDB 結構需要提升 `indexedDB.open('todoapp', 1)` 的版本並在 `onupgradeneeded` 處理遷移。
+- 修改 IndexedDB 結構需要提升 `indexedDB.open('todoapp', 2)` 的版本並在 `onupgradeneeded` 處理遷移。
 
 ## 測試方式
 

@@ -238,7 +238,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
 .gallery img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 14px; display: block; cursor: zoom-in; }
 
 .toast {
-  position: fixed; left: 50%; transform: translateX(-50%);
+  position: fixed; left: 0; right: 0; margin: 0 auto; width: max-content;
   bottom: calc(env(safe-area-inset-bottom) + 20px);
   background: rgba(30,32,36,.92); color: #fff;
   border-radius: 14px;
@@ -249,7 +249,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
   z-index: 10;
 }
 .toast[hidden], .lightbox[hidden], [hidden] { display: none !important; }
-.toast button { color: #7fb2ff; font-weight: 600; }
+.toast button { color: #7fb2ff; font-weight: 600; flex: none; white-space: nowrap; }
 
 .icon-spacer { width: 42px; flex: none; }
 

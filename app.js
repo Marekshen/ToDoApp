@@ -1,4 +1,4 @@
-const APP_VERSION = '2.2（2026-10-26）';
+const APP_VERSION = '2.3（2026-10-26）';
 const MAX_IMAGES = 9;
 const MAX_VIDEOS = 3;
 const MAX_VIDEO_MB = 100;
